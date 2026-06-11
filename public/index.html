@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Frz Bank</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="auth-screen hidden" id="setup-screen">
+      <main class="auth-panel">
+        <div class="brand-block">
+          <span class="brand-mark">F</span>
+          <div>
+            <p class="eyebrow">Первичная настройка</p>
+            <h1>Создать администратора</h1>
+          </div>
+        </div>
+
+        <form class="login-form" id="setup-form">
+          <label>
+            <span>Имя администратора</span>
+            <input id="setup-name" autocomplete="name" required />
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="setup-email" autocomplete="email" required type="email" />
+          </label>
+          <label>
+            <span>Пароль</span>
+            <input id="setup-password" autocomplete="new-password" minlength="12" required type="password" />
+          </label>
+          <button class="primary-button" type="submit">Создать и войти</button>
+          <p class="form-message" id="setup-message" role="status"></p>
+        </form>
+      </main>
+    </div>
+
+    <div class="auth-screen hidden" id="auth-screen">
+      <main class="auth-panel">
+        <div class="brand-block">
+          <span class="brand-mark">F</span>
+          <div>
+            <p class="eyebrow">Secure banking</p>
+            <h1>Frz Bank</h1>
+          </div>
+        </div>
+
+        <form class="login-form" id="login-form">
+          <label>
+            <span>Email или логин</span>
+            <input id="login-email" autocomplete="username" required value="root" />
+          </label>
+          <label>
+            <span>Пароль</span>
+            <input id="login-password" autocomplete="current-password" required type="password" />
+          </label>
+          <button class="primary-button" type="submit">Войти</button>
+          <p class="form-message" id="login-message" role="status"></p>
+        </form>
+
+        <button class="ghost-button" id="show-register" type="button">Создать клиентский аккаунт</button>
+
+        <form class="login-form hidden" id="register-form">
+          <label>
+            <span>Имя</span>
+            <input id="register-name" autocomplete="name" required />
+          </label>
+          <label>
+            <span>Логин</span>
+            <input id="register-username" autocomplete="username" />
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="register-email" autocomplete="email" required type="email" />
+          </label>
+          <label>
+            <span>Пароль</span>
+            <input id="register-password" autocomplete="new-password" minlength="10" required type="password" />
+          </label>
+          <button class="primary-button" type="submit">Зарегистрироваться</button>
+          <button class="ghost-button" id="hide-register" type="button">Вернуться ко входу</button>
+          <p class="form-message" id="register-message" role="status"></p>
+        </form>
+      </main>
+    </div>
+
+    <div class="app-shell hidden" id="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">F</span>
+          <span>
+            <strong>Frz Bank</strong>
+            <small id="current-role">user</small>
+          </span>
+        </div>
+
+        <nav class="nav">
+          <button class="nav-item active" data-view="overview" type="button">⌂ <span>Главная</span></button>
+          <button class="nav-item" data-view="accounts" type="button">▦ <span>Счета</span></button>
+          <button class="nav-item" data-view="transfer" type="button">↗ <span>Перевод</span></button>
+          <button class="nav-item admin-only hidden" data-view="admin" type="button">⚙ <span>Пользователи</span></button>
+          <button class="nav-item admin-only hidden" data-view="admin-accounts" type="button">₽ <span>Счета</span></button>
+        </nav>
+
+        <button class="logout-button" id="logout-button" type="button">Выйти</button>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Личный кабинет</p>
+            <h1 id="hello-title">Добро пожаловать</h1>
+          </div>
+          <div class="user-panel">
+            <span class="user-avatar" id="user-avatar">U</span>
+            <span>
+              <strong id="current-name">Пользователь</strong>
+              <small id="current-email"></small>
+            </span>
+          </div>
+        </header>
+
+        <section class="view active" id="overview">
+          <div class="summary-grid">
+            <article class="balance-card">
+              <p class="card-label">Общий баланс</p>
+              <h2 id="total-balance">0 ₽</h2>
+              <div class="balance-meta">
+                <span>Сессия защищена cookie</span>
+                <span id="accounts-count">0 счетов</span>
+              </div>
+            </article>
+            <article class="metric-card">
+              <p>Расходы</p>
+              <strong id="month-spend">0 ₽</strong>
+              <span>по последним операциям</span>
+            </article>
+            <article class="metric-card">
+              <p>Пользователь</p>
+              <strong id="status-text">active</strong>
+              <span>роль и статус</span>
+            </article>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Счета</h2>
+                <button class="ghost-button" data-view="accounts" type="button">Все счета</button>
+              </div>
+              <div class="accounts-list" id="overview-accounts"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Операции</h2>
+              </div>
+              <div class="activity-list" id="activity-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="accounts">
+          <div class="section-title">
+            <p class="eyebrow">Продукты</p>
+            <h2>Счета и карты</h2>
+          </div>
+          <form class="inline-create-form" id="own-account-form">
+            <input id="own-account-name" placeholder="Название нового счета" maxlength="80" />
+            <button class="primary-button" id="create-own-account" type="submit">Создать счет</button>
+            <span class="row-subtitle" id="own-account-limit">Максимум 3 счета</span>
+          </form>
+          <div class="account-grid" id="accounts-grid"></div>
+        </section>
+
+        <section class="view" id="transfer">
+          <div class="section-title">
+            <p class="eyebrow">Платежи</p>
+            <h2>Новый перевод</h2>
+          </div>
+          <form class="transfer-form" id="transfer-form">
+            <label>
+              <span>Списать со счета</span>
+              <select id="from-account"></select>
+            </label>
+            <label>
+              <span>Номер счета получателя</span>
+              <input id="recipient" inputmode="numeric" required placeholder="4081780000010000000000" />
+            </label>
+            <label>
+              <span>Сумма, ₽</span>
+              <input id="amount" inputmode="decimal" min="1" required type="number" />
+            </label>
+            <label>
+              <span>Комментарий</span>
+              <input id="note" placeholder="Назначение платежа" />
+            </label>
+            <button class="primary-button" type="submit">Отправить перевод</button>
+            <p class="form-message" id="transfer-message" role="status"></p>
+          </form>
+        </section>
+
+        <section class="view" id="admin">
+          <div class="section-title">
+            <p class="eyebrow">Администрирование</p>
+            <h2>Пользователи</h2>
+          </div>
+
+          <form class="admin-form" id="user-form">
+            <input id="new-name" required placeholder="Имя" />
+            <input id="new-username" placeholder="Логин" />
+            <input id="new-email" required placeholder="Email" type="email" />
+            <input id="new-password" required placeholder="Пароль от 8 символов" type="password" />
+            <select id="new-role">
+              <option value="client">client</option>
+              <option value="manager">manager</option>
+              <option value="admin">admin</option>
+            </select>
+            <input id="new-balance" placeholder="Начальный баланс" type="number" min="0" step="0.01" />
+            <button class="primary-button" type="submit">Создать</button>
+          </form>
+
+          <div class="panel">
+            <div class="users-table" id="users-table"></div>
+          </div>
+        </section>
+
+        <section class="view" id="admin-accounts">
+          <div class="section-title">
+            <p class="eyebrow">Администрирование</p>
+            <h2>Счета клиентов</h2>
+          </div>
+
+          <form class="admin-form account-adjust-form" id="account-adjust-form">
+            <select id="adjust-account"></select>
+            <select id="adjust-direction">
+              <option value="deposit">Пополнение</option>
+              <option value="withdrawal">Списание</option>
+            </select>
+            <input id="adjust-amount" placeholder="Сумма" required type="number" min="0.01" step="0.01" />
+            <input id="adjust-note" placeholder="Комментарий" />
+            <button class="primary-button" type="submit">Провести</button>
+          </form>
+
+          <form class="admin-form account-create-form" id="account-create-form">
+            <select id="account-user"></select>
+            <input id="account-name" placeholder="Название счета" />
+            <input id="account-initial-balance" placeholder="Начальный баланс" type="number" min="0" step="0.01" />
+            <button class="primary-button" type="submit">Создать счет</button>
+          </form>
+
+          <div class="panel">
+            <div class="users-table" id="admin-accounts-table"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
