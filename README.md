@@ -27,7 +27,7 @@ bankweb/services.py    # users, accounts, transfers, admin logic
 public/                # frontend assets
 ```
 
-Local runtime files such as `.env`, `venv/`, `var/`, nginx configs, shell scripts, and systemd units are intentionally kept out of git.
+Local runtime files such as `.env`, `venv/`, and `var/` should stay out of git.
 
 ## Requirements
 
@@ -101,10 +101,24 @@ Example:
 [2026-06-11 21:00:06] API POST /api/auth/login status=200 actor=root#2<admin> ip=127.0.0.1 user_agent="curl/7.81.0"
 ```
 
-## Deployment Notes
+## Deployment
 
-For production on this server, nginx and systemd files are maintained locally outside git. After backend code changes, restart the service:
+BankWeb is a plain Python HTTP application. In production, run it behind a reverse proxy such as nginx, Caddy, or Apache, and use a process manager such as systemd, Supervisor, Docker, or your hosting platform's service runner.
+
+The application reads two optional runtime variables:
+
+```env
+BANKWEB_HOST=127.0.0.1
+BANKWEB_PORT=8062
+```
+
+Typical production flow:
 
 ```bash
-sudo systemctl restart bankweb
+python3.13 -m venv venv
+./venv/bin/pip install -r requirements.txt
+cp .env.example .env
+BANKWEB_HOST=127.0.0.1 BANKWEB_PORT=8062 ./venv/bin/python server.py
 ```
+
+Configure your reverse proxy to forward public traffic to `BANKWEB_HOST:BANKWEB_PORT`.
