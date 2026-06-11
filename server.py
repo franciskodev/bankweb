@@ -67,6 +67,10 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def log_time(value: datetime) -> str:
+    return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def format_log_value(value):
     if value is None or value == "":
         return "-"
@@ -96,7 +100,7 @@ def append_user_action(entry):
             "[{time}] API {method} {path} status={status} actor={actor} "
             "ip={ip} user_agent=\"{user_agent}\""
         ).format(
-            time=timestamp.isoformat(),
+            time=log_time(timestamp),
             method=format_log_value(entry.get("method")),
             path=format_log_value(entry.get("path")),
             status=format_log_value(entry.get("status")),
@@ -112,7 +116,7 @@ def append_user_action(entry):
             "[{time}] AUDIT action={action} actor={actor} entity={entity_type}:{entity_id} "
             "metadata={metadata}"
         ).format(
-            time=timestamp.isoformat(),
+            time=log_time(timestamp),
             action=format_log_value(entry.get("action")),
             actor=actor_label(entry.get("actorUserId")),
             entity_type=format_log_value(entry.get("entityType")),
@@ -120,7 +124,7 @@ def append_user_action(entry):
             metadata=json.dumps(metadata, ensure_ascii=False, default=str),
         )
     else:
-        line = f"[{timestamp.isoformat()}] {source} {entry}"
+        line = f"[{log_time(timestamp)}] {source} {entry}"
 
     with LOG_LOCK:
         with log_path.open("a", encoding="utf-8") as file:
