@@ -68,3 +68,11 @@ http://127.0.0.1:8062
 ## Notes
 
 Runtime files such as `.env`, virtual environments, logs, nginx configs, and local service scripts should stay out of git.
+
+User actions are written to:
+
+```text
+var/log/user-actions.log
+```
+
+The log format is JSON-lines: one JSON object per action.

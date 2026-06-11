@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import secrets
+import threading
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from http import HTTPStatus
@@ -19,6 +20,7 @@ import asyncpg
 
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
+USER_ACTIONS_LOG = BASE_DIR / "var" / "log" / "user-actions.log"
 SESSION_COOKIE = "bankweb_session"
 SESSION_TTL_DAYS = 7
 PBKDF2_ITERATIONS = 240_000
@@ -58,9 +60,19 @@ ROOT_PASSWORD = os.getenv("BANKWEB_ROOT_PASSWORD", "")
 if not ROOT_PASSWORD:
     raise RuntimeError("BANKWEB_ROOT_PASSWORD must be set in /home/www/bankweb/.env")
 
+LOG_LOCK = threading.Lock()
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def append_user_action(entry):
+    record = {"timestamp": utcnow().isoformat(), **entry}
+    USER_ACTIONS_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with LOG_LOCK:
+        with USER_ACTIONS_LOG.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
 def json_dumps(payload):
@@ -187,6 +199,16 @@ async def init_db():
 
 
 async def audit(conn, actor_id, action, entity_type, entity_id, metadata=None):
+    append_user_action(
+        {
+            "source": "audit",
+            "actorUserId": actor_id,
+            "action": action,
+            "entityType": entity_type,
+            "entityId": str(entity_id),
+            "metadata": metadata or {},
+        }
+    )
     await conn.execute(
         """
         INSERT INTO bankweb_audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
@@ -934,6 +956,51 @@ class BankWebHandler(BaseHTTPRequestHandler):
                 self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
+        self.log_api_action(payload, status)
+
+    def client_ip(self):
+        forwarded_for = self.headers.get("X-Forwarded-For", "")
+        if forwarded_for:
+            return forwarded_for.split(",", 1)[0].strip()
+        return self.client_address[0] if self.client_address else ""
+
+    def response_actor(self, payload):
+        if isinstance(payload, dict) and isinstance(payload.get("user"), dict):
+            return {
+                "id": payload["user"].get("id"),
+                "username": payload["user"].get("username"),
+                "email": payload["user"].get("email"),
+                "role": payload["user"].get("role"),
+            }
+        try:
+            user = self.current_user()
+        except Exception:
+            user = None
+        if not user:
+            return None
+        return {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],
+        }
+
+    def log_api_action(self, payload, status):
+        path = urlparse(self.path).path
+        if not path.startswith("/api/"):
+            return
+        entry = {
+            "source": "api",
+            "method": self.command,
+            "path": path,
+            "status": int(status),
+            "actor": self.response_actor(payload),
+            "ip": self.client_ip(),
+            "userAgent": self.headers.get("User-Agent", ""),
+        }
+        if isinstance(payload, dict) and payload.get("error"):
+            entry["error"] = payload["error"]
+        append_user_action(entry)
 
     def cookie_token(self):
         cookies = SimpleCookie(self.headers.get("Cookie", ""))
