@@ -69,10 +69,14 @@ http://127.0.0.1:8062
 
 Runtime files such as `.env`, virtual environments, logs, nginx configs, and local service scripts should stay out of git.
 
-User actions are written to:
+User actions are written as plain text lines split by date:
 
 ```text
-var/log/user-actions.log
+var/log/actions/YYYY-MM-DD.log
 ```
 
-The log format is JSON-lines: one JSON object per action.
+Example:
+
+```text
+[2026-06-11T20:54:00.570098+00:00] API GET /api/admin/users status=200 actor=root#2<admin> ip=127.0.0.1 user_agent="curl/7.81.0"
+```
