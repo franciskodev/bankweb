@@ -1,24 +1,40 @@
 # BankWeb
 
-BankWeb is a small banking web application with a Python backend, PostgreSQL storage, user authentication, client registration, account management, and internal transfers by account number.
+BankWeb is a small banking web application with a Python backend, PostgreSQL storage, user authentication, account management, admin tools, and internal transfers by account number.
 
 ## Features
 
-- Login and client registration
-- Protected root administrator account
+- Client registration and login
+- Protected `root` administrator restored on startup
 - Roles: `client`, `manager`, `admin`
 - Up to 3 accounts per user
-- Internal transfers only to existing account numbers
+- Internal transfers only to existing active account numbers
 - Admin user management
 - Admin account creation, deposits, and withdrawals
 - PostgreSQL persistence
+- Plain text action logs split by date
+
+## Project Layout
+
+```text
+server.py              # application entry point
+bankweb/config.py      # env, paths, constants
+bankweb/db.py          # PostgreSQL connection helpers
+bankweb/http.py        # HTTP handler and API routes
+bankweb/logging.py     # dated action logs
+bankweb/security.py    # password hashing and verification
+bankweb/services.py    # users, accounts, transfers, admin logic
+public/                # frontend assets
+```
+
+Local runtime files such as `.env`, `venv/`, `var/`, nginx configs, shell scripts, and systemd units are intentionally kept out of git.
 
 ## Requirements
 
 - Python 3.13+
 - PostgreSQL
 
-Install Python dependencies:
+Install dependencies:
 
 ```bash
 python3.13 -m venv venv
@@ -33,7 +49,7 @@ Create a local `.env` file:
 cp .env.example .env
 ```
 
-Then set the real values:
+Set real values:
 
 ```env
 BANKWEB_ROOT_PASSWORD=change-me
@@ -45,13 +61,13 @@ POSTGRES_DB=bankweb
 POSTGRES_COMMAND_TIMEOUT=30
 ```
 
-The app creates or restores the `root` administrator on startup. The root login is:
+The root login is:
 
 ```text
 root
 ```
 
-The password is taken from `BANKWEB_ROOT_PASSWORD`.
+The password is read from `BANKWEB_ROOT_PASSWORD`.
 
 ## Run
 
@@ -65,11 +81,15 @@ Open:
 http://127.0.0.1:8062
 ```
 
-## Notes
+## Logs
 
-Runtime files such as `.env`, virtual environments, logs, nginx configs, and local service scripts should stay out of git.
+Application logs:
 
-User actions are written as plain text lines split by date:
+```text
+var/log/bankweb.log
+```
+
+User action logs are plain text and split by UTC date:
 
 ```text
 var/log/actions/YYYY-MM-DD.log
@@ -78,5 +98,13 @@ var/log/actions/YYYY-MM-DD.log
 Example:
 
 ```text
-[2026-06-11T20:54:00.570098+00:00] API GET /api/admin/users status=200 actor=root#2<admin> ip=127.0.0.1 user_agent="curl/7.81.0"
+[2026-06-11 21:00:06] API POST /api/auth/login status=200 actor=root#2<admin> ip=127.0.0.1 user_agent="curl/7.81.0"
+```
+
+## Deployment Notes
+
+For production on this server, nginx and systemd files are maintained locally outside git. After backend code changes, restart the service:
+
+```bash
+sudo systemctl restart bankweb
 ```
