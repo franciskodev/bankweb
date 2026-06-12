@@ -7,35 +7,6 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="auth-screen hidden" id="setup-screen">
-      <main class="auth-panel">
-        <div class="brand-block">
-          <span class="brand-mark">F</span>
-          <div>
-            <p class="eyebrow">Первичная настройка</p>
-            <h1>Создать администратора</h1>
-          </div>
-        </div>
-
-        <form class="login-form" id="setup-form">
-          <label>
-            <span>Имя администратора</span>
-            <input id="setup-name" autocomplete="name" required />
-          </label>
-          <label>
-            <span>Email</span>
-            <input id="setup-email" autocomplete="email" required type="email" />
-          </label>
-          <label>
-            <span>Пароль</span>
-            <input id="setup-password" autocomplete="new-password" minlength="12" required type="password" />
-          </label>
-          <button class="primary-button" type="submit">Создать и войти</button>
-          <p class="form-message" id="setup-message" role="status"></p>
-        </form>
-      </main>
-    </div>
-
     <div class="auth-screen hidden" id="auth-screen">
       <main class="auth-panel">
         <div class="brand-block">
@@ -49,7 +20,7 @@
         <form class="login-form" id="login-form">
           <label>
             <span>Email или логин</span>
-            <input id="login-email" autocomplete="username" required value="root" />
+            <input id="login-email" autocomplete="username" required />
           </label>
           <label>
             <span>Пароль</span>

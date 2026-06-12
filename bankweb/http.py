@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
@@ -15,7 +17,6 @@ from .services import (
     admin_create_user,
     admin_delete_user,
     admin_update_user,
-    create_first_admin,
     create_own_account,
     create_transfer,
     dashboard,
@@ -23,10 +24,15 @@ from .services import (
     login_user,
     logout_user,
     register_client,
-    setup_status,
     user_by_session,
     user_payload,
 )
+
+
+LOGIN_FAILURES = {}
+LOGIN_LOCK = threading.Lock()
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_MAX_FAILURES = 8
 
 
 def json_dumps(payload):
@@ -35,6 +41,7 @@ def json_dumps(payload):
 
 class BankWebHandler(BaseHTTPRequestHandler):
     server_version = "BankWeb/2.0"
+    max_json_body_bytes = 64 * 1024
 
     def log_message(self, fmt, *args):
         print("{} - - [{}] {}".format(self.address_string(), self.log_date_time_string(), fmt % args))
@@ -50,6 +57,7 @@ class BankWebHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/"):
             self.send_response(HTTPStatus.OK)
+            self.security_headers()
             self.end_headers()
             return
         self.serve_static(parsed.path, head_only=True)
@@ -68,6 +76,9 @@ class BankWebHandler(BaseHTTPRequestHandler):
         if not parsed.path.startswith("/api/"):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
+        if not self.valid_write_origin():
+            self.respond_json({"error": "Недопустимый источник запроса."}, HTTPStatus.FORBIDDEN)
+            return
         body = {} if method == "DELETE" else self.read_json()
         if body is None:
             return
@@ -80,6 +91,9 @@ class BankWebHandler(BaseHTTPRequestHandler):
 
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0") or "0")
+        if length > self.max_json_body_bytes:
+            self.respond_json({"error": "Слишком большой запрос."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return None
         if length <= 0:
             return {}
         try:
@@ -94,6 +108,7 @@ class BankWebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.security_headers()
         if extra_headers:
             for key, value in extra_headers.items():
                 self.send_header(key, value)
@@ -145,6 +160,24 @@ class BankWebHandler(BaseHTTPRequestHandler):
             entry["error"] = payload["error"]
         append_user_action(entry)
 
+    def security_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'self'; frame-ancestors 'none'")
+
+    def valid_write_origin(self):
+        origin = self.headers.get("Origin")
+        referer = self.headers.get("Referer")
+        host = self.headers.get("Host", "")
+        allowed = {f"http://{host}", f"https://{host}"}
+        if origin:
+            return origin in allowed
+        if referer:
+            parsed = urlparse(referer)
+            return f"{parsed.scheme}://{parsed.netloc}" in allowed
+        return True
+
     def cookie_token(self):
         cookies = SimpleCookie(self.headers.get("Cookie", ""))
         return cookies[SESSION_COOKIE].value if SESSION_COOKIE in cookies else ""
@@ -153,7 +186,41 @@ class BankWebHandler(BaseHTTPRequestHandler):
         secure = ""
         if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
             secure = "; Secure"
-        return f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}"
+        return f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}{secure}"
+
+    def login_rate_key(self, payload):
+        login = ""
+        if isinstance(payload, dict):
+            login = str(payload.get("email", "")).lower().strip()
+        return f"{self.client_ip()}:{login}"
+
+    def login_blocked(self, payload):
+        key = self.login_rate_key(payload)
+        current_time = time.time()
+        with LOGIN_LOCK:
+            attempts = [
+                attempt_time
+                for attempt_time in LOGIN_FAILURES.get(key, [])
+                if current_time - attempt_time < LOGIN_WINDOW_SECONDS
+            ]
+            LOGIN_FAILURES[key] = attempts
+            return len(attempts) >= LOGIN_MAX_FAILURES
+
+    def record_login_failure(self, payload):
+        key = self.login_rate_key(payload)
+        current_time = time.time()
+        with LOGIN_LOCK:
+            attempts = [
+                attempt_time
+                for attempt_time in LOGIN_FAILURES.get(key, [])
+                if current_time - attempt_time < LOGIN_WINDOW_SECONDS
+            ]
+            attempts.append(current_time)
+            LOGIN_FAILURES[key] = attempts
+
+    def clear_login_failures(self, payload):
+        with LOGIN_LOCK:
+            LOGIN_FAILURES.pop(self.login_rate_key(payload), None)
 
     def current_user(self):
         return db_run(user_by_session(self.cookie_token()))
@@ -185,9 +252,6 @@ class BankWebHandler(BaseHTTPRequestHandler):
 
     def handle_api_get(self, path):
         try:
-            if path == "/api/setup/status":
-                self.respond_json(db_run(setup_status()))
-                return
             if path == "/api/session":
                 user = self.current_user()
                 self.respond_json({"user": user_payload(user) if user else None})
@@ -215,16 +279,16 @@ class BankWebHandler(BaseHTTPRequestHandler):
 
     def handle_api_post(self, path, payload):
         try:
-            if path == "/api/setup/admin":
-                user, token = db_run(create_first_admin(payload))
-                self.respond_json(
-                    {"user": user},
-                    HTTPStatus.CREATED,
-                    {"Set-Cookie": self.session_cookie(token)},
-                )
-                return
             if path == "/api/auth/login":
-                user, token = db_run(login_user(payload))
+                if self.login_blocked(payload):
+                    self.respond_json({"error": "Слишком много попыток входа. Попробуйте позже."}, HTTPStatus.TOO_MANY_REQUESTS)
+                    return
+                try:
+                    user, token = db_run(login_user(payload))
+                except PermissionError:
+                    self.record_login_failure(payload)
+                    raise
+                self.clear_login_failures(payload)
                 self.respond_json({"user": user}, extra_headers={"Set-Cookie": self.session_cookie(token)})
                 return
             if path == "/api/auth/register":
@@ -322,6 +386,7 @@ class BankWebHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.security_headers()
         self.end_headers()
         if not head_only:
             self.wfile.write(body)

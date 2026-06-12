@@ -1,4 +1,5 @@
 import json
+import re
 import secrets
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -15,6 +16,29 @@ from .config import (
 from .db import db_connect
 from .logging import append_user_action, utcnow
 from .security import password_hash, verify_password
+
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+USERNAME_RE = re.compile(r"^[a-z0-9_][a-z0-9_.-]{2,31}$")
+
+
+def validate_email(email: str):
+    if not EMAIL_RE.match(email):
+        raise ValueError("Некорректный email.")
+
+
+def validate_username(username: str | None):
+    if username and not USERNAME_RE.match(username):
+        raise ValueError("Логин должен быть 3-32 символа: латиница, цифры, точка, дефис или подчёркивание.")
+
+
+def clean_name(value: str, field_name="Имя", max_length=100):
+    cleaned = " ".join(str(value or "").strip().split())
+    if not cleaned:
+        raise ValueError(f"{field_name} обязательно.")
+    if len(cleaned) > max_length:
+        raise ValueError(f"{field_name} слишком длинное.")
+    return cleaned
 
 
 def money_to_minor(value) -> int:
@@ -157,6 +181,7 @@ def permissions_for(role: str):
 
 
 async def create_account(conn, user_id, name="Основной счет", initial_balance_minor=0):
+    name = clean_name(name, "Название счета", 80)
     account_number = "408178{}{}".format(str(user_id).zfill(6), f"{secrets.randbelow(10_000_000_000):010d}")
     return await conn.fetchrow(
         """
@@ -184,6 +209,11 @@ async def create_user(
     username=None,
     is_system=False,
 ):
+    email = email.lower().strip()
+    username = username.lower().strip() if username else None
+    validate_email(email)
+    validate_username(username)
+    name = clean_name(name)
     async with conn.transaction():
         user = await conn.fetchrow(
             """
@@ -191,9 +221,9 @@ async def create_user(
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
-            username.lower().strip() if username else None,
-            email.lower().strip(),
-            name.strip(),
+            username,
+            email,
+            name,
             role,
             status,
             is_system,
@@ -271,42 +301,6 @@ async def ensure_root_user(conn):
     await audit(conn, user["id"], "system.root.ensure", "user", user["id"])
 
 
-async def setup_status():
-    conn = await db_connect()
-    try:
-        count = await conn.fetchval("SELECT COUNT(*) FROM bankweb_users")
-        return {"needsSetup": count == 0, "rootLogin": ROOT_USERNAME}
-    finally:
-        await conn.close()
-
-
-async def create_first_admin(payload):
-    name = str(payload.get("name", "")).strip()
-    email = str(payload.get("email", "")).lower().strip()
-    password = str(payload.get("password", "")).strip()
-    if not name or not email or len(password) < 12:
-        raise ValueError("Укажите имя, email и пароль от 12 символов.")
-    conn = await db_connect()
-    try:
-        count = await conn.fetchval("SELECT COUNT(*) FROM bankweb_users")
-        if count:
-            raise PermissionError("Первичная настройка уже выполнена.")
-        user = await create_user(
-            conn,
-            email=email,
-            name=name,
-            password=password,
-            role="admin",
-            status="active",
-            initial_balance_minor=0,
-            actor_id=None,
-        )
-        token = await create_session(conn, user["id"])
-        return user_payload(user), token
-    finally:
-        await conn.close()
-
-
 async def create_session(conn, user_id):
     token = secrets.token_urlsafe(32)
     expires_at = utcnow() + timedelta(days=SESSION_TTL_DAYS)
@@ -345,6 +339,8 @@ async def user_by_session(token):
 async def login_user(payload):
     login = str(payload.get("email", "")).lower().strip()
     password = str(payload.get("password", ""))
+    if not login or not password:
+        raise PermissionError("Неверный email или пароль.")
     conn = await db_connect()
     try:
         row = await conn.fetchrow(
@@ -365,11 +361,13 @@ async def login_user(payload):
 async def register_client(payload):
     username = str(payload.get("username", "")).lower().strip() or None
     email = str(payload.get("email", "")).lower().strip()
-    name = str(payload.get("name", "")).strip()
+    name = clean_name(str(payload.get("name", "")))
     password = str(payload.get("password", "")).strip()
+    validate_email(email)
+    validate_username(username)
     if username == ROOT_USERNAME or email == ROOT_EMAIL:
         raise ValueError("Этот логин недоступен.")
-    if not email or not name or len(password) < 10:
+    if len(password) < 10:
         raise ValueError("Email, имя и пароль от 10 символов обязательны.")
     conn = await db_connect()
     try:
@@ -567,9 +565,7 @@ async def create_transfer(user, payload):
 
 
 async def create_own_account(user, payload):
-    name = str(payload.get("name", "")).strip() or "Дополнительный счет"
-    if len(name) > 80:
-        raise ValueError("Название счета слишком длинное.")
+    name = clean_name(str(payload.get("name", "")).strip() or "Дополнительный счет", "Название счета", 80)
     conn = await db_connect()
     try:
         async with conn.transaction():
@@ -598,14 +594,16 @@ async def list_users():
 async def admin_create_user(actor, payload):
     email = str(payload.get("email", "")).lower().strip()
     username = str(payload.get("username", "")).lower().strip() or None
-    name = str(payload.get("name", "")).strip()
+    name = clean_name(str(payload.get("name", "")))
     password = str(payload.get("password", "")).strip()
     role = str(payload.get("role", "client"))
     status = str(payload.get("status", "active"))
     initial_balance = money_to_minor(payload.get("initialBalance", "0"))
     if role not in ("client", "manager", "admin") or status not in ("active", "blocked"):
         raise ValueError("Некорректная роль или статус.")
-    if not email or not name or len(password) < 10:
+    validate_email(email)
+    validate_username(username)
+    if len(password) < 10:
         raise ValueError("Email, имя и пароль от 10 символов обязательны.")
     conn = await db_connect()
     try:
@@ -628,14 +626,12 @@ async def admin_create_user(actor, payload):
 
 
 async def admin_update_user(actor, user_id, payload):
-    name = str(payload.get("name", "")).strip()
+    name = clean_name(str(payload.get("name", "")))
     role = str(payload.get("role", "client"))
     status = str(payload.get("status", "active"))
     password = str(payload.get("password", "")).strip()
     if role not in ("client", "manager", "admin") or status not in ("active", "blocked"):
         raise ValueError("Некорректная роль или статус.")
-    if not name:
-        raise ValueError("Имя обязательно.")
     conn = await db_connect()
     try:
         async with conn.transaction():
@@ -720,7 +716,7 @@ async def admin_accounts():
 
 async def admin_create_account(actor, payload):
     user_id = int(payload.get("userId"))
-    name = str(payload.get("name", "")).strip() or "Дополнительный счет"
+    name = clean_name(str(payload.get("name", "")).strip() or "Дополнительный счет", "Название счета", 80)
     initial_balance = money_to_minor(payload.get("initialBalance", "0"))
     conn = await db_connect()
     try:
@@ -728,6 +724,12 @@ async def admin_create_account(actor, payload):
             user = await conn.fetchrow("SELECT * FROM bankweb_users WHERE id = $1", user_id)
             if not user:
                 raise ValueError("Пользователь не найден.")
+            count = await conn.fetchval(
+                "SELECT COUNT(*) FROM bankweb_accounts WHERE user_id = $1",
+                user_id,
+            )
+            if count >= MAX_USER_ACCOUNTS:
+                raise ValueError(f"Можно создать максимум {MAX_USER_ACCOUNTS} счета.")
             account = await create_account(
                 conn,
                 user_id,

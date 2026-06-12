@@ -11,11 +11,8 @@ const money = new Intl.NumberFormat("ru-RU", {
   maximumFractionDigits: 2,
 });
 
-const setupScreen = document.querySelector("#setup-screen");
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
-const setupForm = document.querySelector("#setup-form");
-const setupMessage = document.querySelector("#setup-message");
 const loginForm = document.querySelector("#login-form");
 const loginMessage = document.querySelector("#login-message");
 const registerForm = document.querySelector("#register-form");
@@ -62,7 +59,6 @@ async function api(path, options = {}) {
 }
 
 function showOnly(screen) {
-  setupScreen.classList.toggle("hidden", screen !== "setup");
   authScreen.classList.toggle("hidden", screen !== "login");
   appShell.classList.toggle("hidden", screen !== "app");
 }
@@ -234,25 +230,6 @@ async function loadAdminAccounts() {
   appState.adminAccounts = payload.accounts;
   renderAdminAccounts();
 }
-
-setupForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  setupMessage.textContent = "";
-  try {
-    const payload = await api("/api/setup/admin", {
-      method: "POST",
-      body: JSON.stringify({
-        name: document.querySelector("#setup-name").value,
-        email: document.querySelector("#setup-email").value,
-        password: document.querySelector("#setup-password").value,
-      }),
-    });
-    showAuthenticated(payload.user);
-    await loadDashboard();
-  } catch (error) {
-    setupMessage.textContent = error.message;
-  }
-});
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -435,11 +412,6 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 
 (async function boot() {
   try {
-    const setup = await api("/api/setup/status");
-    if (setup.needsSetup) {
-      showOnly("setup");
-      return;
-    }
     const session = await api("/api/session");
     if (!session.user) {
       showOnly("login");
